@@ -362,12 +362,12 @@
           <div class="three">
             <label>
               q min
-              <input id="qMin" type="number" min="0.01" max="0.99" step="0.01" value="0.1">
+              <input id="qMin" type="number" min="0.01" max="0.6" step="0.01" value="0.1">
             </label>
 
             <label>
               q max
-              <input id="qMax" type="number" min="0.01" max="0.99" step="0.01" value="0.9">
+              <input id="qMax" type="number" min="0.01" max="0.6" step="0.01" value="0.6">
             </label>
 
             <label>
@@ -472,7 +472,7 @@
       d0: 1,
       maxLead: 30,
       qMin: 0.1,
-      qMax: 0.9,
+      qMax: 0.6,
       qStep: 0.1
     };
 
@@ -498,7 +498,7 @@
     }
 
     function params() {
-      const qMin = clamp(numberValue("qMin"), 0.000001, 0.999999);
+      const qMin = clamp(numberValue("qMin"), 0.000001, 0.6);
       const qMax = clamp(numberValue("qMax"), 0.000001, 0.6);
       const qStep = clamp(numberValue("qStep"), 0.000001, 0.5);
       const d0 = intValue("d0");
@@ -732,7 +732,6 @@
       const height = rect.height || 430;
       chart.width = Math.floor(width * dpr);
       chart.height = Math.floor(height * dpr);
-      chart.axisY.interval = 1;
 
       const ctx = chart.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -763,16 +762,15 @@
       ctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
       ctx.fillStyle = "#9ca3af";
 
-      const yTicks = Math.min(8, yMax);
-      for (let i = 0; i <= yTicks; i++) {
-        const yVal = (yMax / yTicks) * i;
+      // Y-axis ticks are fixed at an interval of 1 block.
+      for (let yVal = 0; yVal <= yMax; yVal += 1) {
         const y = yScale(yVal);
         ctx.beginPath();
         ctx.moveTo(m.left, y);
         ctx.lineTo(width - m.right, y);
         ctx.stroke();
 
-        ctx.fillText(String(Math.round(yVal * 100) / 100), 12, y + 4);
+        ctx.fillText(String(yVal), 12, y + 4);
       }
 
       results.forEach(r => {
