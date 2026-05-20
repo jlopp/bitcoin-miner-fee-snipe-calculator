@@ -165,6 +165,10 @@
       background: #cbd5e1;
     }
 
+    .chart-wrap {
+      position: relative;
+    }
+
     canvas {
       display: block;
       width: 100%;
@@ -172,6 +176,38 @@
       background: #0b1220;
       border: 1px solid var(--border);
       border-radius: 16px;
+    }
+
+    .chart-tooltip {
+      position: absolute;
+      z-index: 10;
+      min-width: 210px;
+      max-width: min(310px, calc(100% - 16px));
+      padding: 10px 12px;
+      color: var(--text);
+      background: rgb(15 23 42 / 0.96);
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      box-shadow: 0 14px 34px rgb(0 0 0 / 0.35);
+      font-size: 0.82rem;
+      line-height: 1.35;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, calc(-100% - 12px));
+      transition: opacity 80ms ease;
+      white-space: nowrap;
+    }
+
+    .chart-tooltip.visible {
+      opacity: 1;
+    }
+
+    .chart-tooltip strong {
+      color: var(--accent-2);
+    }
+
+    .chart-tooltip .muted {
+      color: var(--muted);
     }
 
     .summary {
@@ -384,7 +420,10 @@
 
       <section class="card chart-card">
         <h2>Continuation threshold by miner hashrate</h2>
-        <canvas id="chart" aria-label="Chart of q versus additional net public-chain blocks tolerated"></canvas>
+        <div class="chart-wrap">
+          <canvas id="chart" aria-label="Chart of q versus additional net public-chain blocks tolerated"></canvas>
+          <div id="chartTooltip" class="chart-tooltip" role="status" aria-live="polite"></div>
+        </div>
         <div id="summary" class="summary"></div>
       </section>
     </div>
@@ -481,8 +520,11 @@
     for (const id of ids) el[id] = document.getElementById(id);
 
     const chart = document.getElementById("chart");
+    const chartTooltip = document.getElementById("chartTooltip");
     const summary = document.getElementById("summary");
     const tableBody = document.querySelector("#resultsTable tbody");
+    let chartPoints = [];
+    let chartSize = { width: 0, height: 0 };
 
     function numberValue(id) {
       const v = Number(el[id].value);
@@ -736,8 +778,11 @@
       const ctx = chart.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
+      chartSize = { width, height };
+      chartPoints = [];
+      hideChartTooltip();
 
-      const m = { left: 68, right: 28, top: 28, bottom: 70 };
+      const m = { left: 104, right: 28, top: 28, bottom: 70 };
       const plotW = width - m.left - m.right;
       const plotH = height - m.top - m.bottom;
       const maxYData = Math.max(0, ...results.map(r => r.y));
@@ -770,7 +815,10 @@
         ctx.lineTo(width - m.right, y);
         ctx.stroke();
 
-        ctx.fillText(String(yVal), 12, y + 4);
+        ctx.save();
+        ctx.textAlign = "right";
+        ctx.fillText(String(yVal), m.left - 14, y + 4);
+        ctx.restore();
       }
 
       results.forEach(r => {
@@ -810,13 +858,15 @@
         results.forEach(r => {
           const x = xScale(r.q);
           const y = yScale(r.y);
+          const radius = r.capped ? 6 : 5;
           ctx.beginPath();
-          ctx.arc(x, y, r.capped ? 6 : 5, 0, Math.PI * 2);
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = r.attack ? (r.capped ? "#fbbf24" : "#93c5fd") : "#64748b";
           ctx.fill();
           ctx.strokeStyle = "#0b1220";
           ctx.lineWidth = 2;
           ctx.stroke();
+          chartPoints.push({ x, y, radius, data: r });
         });
       }
 
@@ -835,6 +885,74 @@
       ctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
       ctx.fillStyle = "#9ca3af";
       ctx.fillText("Conservative success condition: private fork reaches d = -1", m.left, 18);
+    }
+
+
+
+    function hideChartTooltip() {
+      chartTooltip.classList.remove("visible");
+      chart.style.cursor = "default";
+    }
+
+    function positionChartTooltip(point) {
+      const chartRect = chart.getBoundingClientRect();
+      const wrap = chart.parentElement;
+      const cssX = chartRect.width ? (point.x / chartSize.width) * chartRect.width : point.x;
+      const cssY = chartRect.height ? (point.y / chartSize.height) * chartRect.height : point.y;
+      const r = point.data;
+      const capNote = r.capped ? '<div class="muted">Value hit the scan cap; raise max public lead for the full threshold.</div>' : '';
+
+      chartTooltip.innerHTML = `
+        <div><strong>q = ${fmtQ(r.q)}</strong></div>
+        <div>Additional net public blocks tolerated: <strong>${r.capped ? "≥ " : ""}${fmt(r.y, 0)}</strong></div>
+        <div>Give up at public lead: <strong>${r.attack ? (r.capped ? "≥ " + r.giveUpLead : r.giveUpLead) : "do not start"}</strong></div>
+        <div class="muted">Start EV: ${fmt(r.startEV, 6)} BTC; P(win): ${fmt(r.startP, 6)}</div>
+        ${capNote}
+      `;
+
+      chartTooltip.classList.add("visible");
+      chart.style.cursor = "pointer";
+
+      const tooltipWidth = chartTooltip.offsetWidth || 210;
+      const tooltipHeight = chartTooltip.offsetHeight || 70;
+      const wrapWidth = wrap.clientWidth || chartRect.width;
+      const clampedLeft = clamp(cssX, tooltipWidth / 2 + 8, wrapWidth - tooltipWidth / 2 - 8);
+      const above = cssY > tooltipHeight + 18;
+
+      chartTooltip.style.left = `${clampedLeft}px`;
+      chartTooltip.style.top = `${cssY}px`;
+      chartTooltip.style.transform = above
+        ? "translate(-50%, calc(-100% - 12px))"
+        : "translate(-50%, 12px)";
+    }
+
+    function handleChartHover(event) {
+      if (!chartPoints.length || chartSize.width <= 0 || chartSize.height <= 0) {
+        hideChartTooltip();
+        return;
+      }
+
+      const rect = chart.getBoundingClientRect();
+      const scaleX = chartSize.width / rect.width;
+      const scaleY = chartSize.height / rect.height;
+      const x = (event.clientX - rect.left) * scaleX;
+      const y = (event.clientY - rect.top) * scaleY;
+
+      let closest = null;
+      let bestDistance = Infinity;
+      for (const point of chartPoints) {
+        const dx = x - point.x;
+        const dy = y - point.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const hitRadius = Math.max(14, point.radius + 8);
+        if (distance <= hitRadius && distance < bestDistance) {
+          closest = point;
+          bestDistance = distance;
+        }
+      }
+
+      if (closest) positionChartTooltip(closest);
+      else hideChartTooltip();
     }
 
     function renderTable(results, p) {
@@ -901,6 +1019,9 @@
 
     document.getElementById("recalculateBtn").addEventListener("click", update);
     document.getElementById("resetBtn").addEventListener("click", reset);
+    chart.addEventListener("mousemove", handleChartHover);
+    chart.addEventListener("mouseleave", hideChartTooltip);
+
     document.getElementById("paramsForm").addEventListener("input", () => {
       window.clearTimeout(window.__reorgTimer);
       window.__reorgTimer = window.setTimeout(update, 120);
