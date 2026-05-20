@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bitcoin fee-sniping reorg EV chart</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --line: #334155;
+      --accent: #60a5fa;
+      --accent-2: #93c5fd;
+      --danger: #f87171;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --input: #0b1220;
+      --border: #374151;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0, var(--bg) 42rem);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    main {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.6rem, 3vw, 2.35rem);
+      letter-spacing: -0.03em;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.15rem;
+    }
+
+    p {
+      color: var(--muted);
+      margin: 0 0 16px;
+    }
+
+    code, .formula {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(290px, 390px) 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 940px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 24px 70px rgb(0 0 0 / 0.22);
+    }
+
+    form.card {
+      padding: 18px;
+    }
+
+    .chart-card {
+      padding: 18px;
+      min-width: 0;
+    }
+
+    fieldset {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      margin: 0 0 14px;
+      padding: 12px;
+    }
+
+    legend {
+      color: var(--accent-2);
+      padding: 0 6px;
+      font-weight: 700;
+      font-size: 0.92rem;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      margin: 0 0 10px;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+
+    .help {
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    input, select {
+      width: 100%;
+      color: var(--text);
+      background: var(--input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 10px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgb(96 165 250 / 0.18);
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .three {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 520px) {
+      .two, .three {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 13px;
+      cursor: pointer;
+      color: #07111f;
+      background: var(--accent);
+      font-weight: 750;
+      margin-right: 8px;
+    }
+
+    button.secondary {
+      background: #cbd5e1;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 430px;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+
+    .summary {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 0.93rem;
+    }
+
+    .summary strong {
+      color: var(--text);
+    }
+
+    .warning {
+      color: var(--warn);
+    }
+
+    .table-card, .notes-card {
+      margin-top: 18px;
+      padding: 18px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child, td:first-child {
+      text-align: left;
+    }
+
+    th {
+      color: var(--accent-2);
+      font-weight: 750;
+      background: #111b2d;
+      position: sticky;
+      top: 0;
+    }
+
+    tr.no-attack td {
+      color: var(--muted);
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+
+    .pill.yes {
+      color: #042013;
+      background: var(--good);
+    }
+
+    .pill.no {
+      color: #2a0606;
+      background: var(--danger);
+    }
+
+    details {
+      color: var(--muted);
+    }
+
+    details summary {
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 750;
+      margin-bottom: 10px;
+    }
+
+    .formula-box {
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+
+    .small {
+      font-size: 0.84rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Bitcoin fee-sniping reorg EV chart</h1>
+    <p>
+      This page models a rational miner considering a private fork to reorganize the last block and claim an unusually large fee.
+      The chart scans hashrate <code>q</code> and plots the number of additional net public-chain blocks the miner would tolerate
+      before the continuation value becomes non-positive.
+    </p>
+
+    <div class="layout">
+      <form id="paramsForm" class="card">
+        <h2>Model inputs</h2>
+
+        <fieldset>
+          <legend>Economic payoff</legend>
+          <label>
+            Extraordinary fee, F
+            <input id="F" type="number" min="0" step="0.00000001" value="100">
+            <span class="help">Fee the miner is trying to capture, in BTC.</span>
+          </label>
+
+          <div class="two">
+            <label>
+              Ordinary private-block reward, R
+              <input id="R" type="number" min="0" step="0.00000001" value="3.125">
+              <span class="help">Subsidy plus normal fees per private block.</span>
+            </label>
+
+            <label>
+              Existing private blocks, B
+              <input id="B" type="number" min="0" step="1" value="0">
+              <span class="help">Usually 0 at the start of a last-block reorg attempt.</span>
+            </label>
+          </div>
+
+          <label>
+            Penalty / risk cost, Φ
+            <input id="phi" type="number" min="0" step="0.00000001" value="0">
+            <span class="help">Expected reputational, detection, legal, or market-impact cost if the attack is attempted or succeeds.</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Opportunity cost</legend>
+          <label>
+            Cost model
+            <select id="costMode">
+              <option value="dynamic" selected>Dynamic: c(q) = q × honest reward + extra cost</option>
+              <option value="fixed">Fixed: use c directly for every q</option>
+            </select>
+          </label>
+
+          <div class="two">
+            <label>
+              Honest reward per public block
+              <input id="honestReward" type="number" min="0" step="0.00000001" value="3.125">
+              <span class="help">Used only by the dynamic cost model.</span>
+            </label>
+
+            <label>
+              Extra cost per block event
+              <input id="extraCost" type="number" min="0" step="0.00000001" value="0">
+              <span class="help">Financing, operational, or pool-defection cost.</span>
+            </label>
+          </div>
+
+          <label>
+            Fixed c
+            <input id="cFixed" type="number" min="0" step="0.00000001" value="0.8">
+            <span class="help">Used only by the fixed cost model.</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Fork state and search bounds</legend>
+          <div class="two">
+            <label>
+              Starting public lead, d₀
+              <input id="d0" type="number" min="0" step="1" value="1">
+              <span class="help">Use 1 for an attempt to reorg the most recent block.</span>
+            </label>
+
+            <label>
+              Max public lead to scan
+              <input id="maxLead" type="number" min="2" max="500" step="1" value="30">
+              <span class="help">Higher values allow longer-shot continuation thresholds.</span>
+            </label>
+          </div>
+
+          <div class="three">
+            <label>
+              q min
+              <input id="qMin" type="number" min="0.01" max="0.99" step="0.01" value="0.1">
+            </label>
+
+            <label>
+              q max
+              <input id="qMax" type="number" min="0.01" max="0.99" step="0.01" value="0.9">
+            </label>
+
+            <label>
+              q step
+              <input id="qStep" type="number" min="0.01" max="0.5" step="0.01" value="0.1">
+              <span class="help">Default is the requested 0.1 increments.</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <button type="button" id="recalculateBtn">Recalculate</button>
+        <button type="button" class="secondary" id="resetBtn">Reset</button>
+      </form>
+
+      <section class="card chart-card">
+        <h2>Continuation threshold by miner hashrate</h2>
+        <canvas id="chart" aria-label="Chart of q versus additional net public-chain blocks tolerated"></canvas>
+        <div id="summary" class="summary"></div>
+      </section>
+    </div>
+
+    <section class="card table-card">
+      <h2>Results</h2>
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>q</th>
+            <th>p = 1 − q</th>
+            <th>c used</th>
+            <th>Attack?</th>
+            <th>Start EV</th>
+            <th>Best start give-up lead G*</th>
+            <th>P(win) at G*</th>
+            <th>E[events] at G*</th>
+            <th>Give up when public lead reaches</th>
+            <th>Chart y: additional net public blocks tolerated</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card notes-card">
+      <details open>
+        <summary>Formula notes</summary>
+        <p>
+          The model uses the conservative one-block-ahead success condition: the private fork succeeds when its lead reaches
+          <code>d = -1</code>. It gives up at a public lead boundary <code>G</code>. For each current public lead
+          <code>d</code>, the page scans all <code>G &gt; d</code> and keeps the best positive expected value.
+        </p>
+
+        <div class="formula-box small">
+          <div class="formula">p = 1 − q</div>
+          <div class="formula">ρ = q / p</div>
+          <br>
+          <div class="formula">Pwin(d,G) = (ρ^(d+1) − ρ^(G+1)) / (1 − ρ^(G+1)), when q ≠ p</div>
+          <div class="formula">Pwin(d,G) = (G − d) / (G + 1), when q = p</div>
+          <br>
+          <div class="formula">T(d,G) = { (G+1)[(1 − ρ^(d+1))/(1 − ρ^(G+1))] − (d+1) } / (p − q), when q ≠ p</div>
+          <div class="formula">T(d,G) = (d+1)(G−d), when q = p</div>
+          <br>
+          <div class="formula">EV(d,G) = Pwin(d,G)(F + B·R − Φ) + R·M(d,G) − c·T(d,G)</div>
+        </div>
+
+        <p>
+          <code>M(d,G)</code> is the expected number of additional private blocks mined on paths that end in success,
+          weighted by success probability. It is solved in JavaScript from the recurrence:
+        </p>
+
+        <div class="formula-box small">
+          <div class="formula">M(d) = q · [Pwin(d−1,G) + M(d−1)] + p · M(d+1)</div>
+          <div class="formula">M(−1) = 0, M(G) = 0</div>
+        </div>
+
+        <p>
+          The plotted y-value is:
+        </p>
+
+        <div class="formula-box small">
+          <div class="formula">y = max(0, giveUpLead − d₀)</div>
+        </div>
+
+        <p>
+          So with <code>d₀ = 1</code>, a y-value of <code>1</code> means: "try the reorg, but give up if the public chain
+          gets to a 2-block lead." If a point hits the configured max public lead, increase the scan bound to see whether
+          the positive-EV region extends farther.
+        </p>
+      </details>
+    </section>
+  </main>
+
+  <script>
+    const defaults = {
+      F: 100,
+      R: 3.125,
+      B: 0,
+      phi: 0,
+      costMode: "dynamic",
+      honestReward: 3.125,
+      extraCost: 0,
+      cFixed: 0.8,
+      d0: 1,
+      maxLead: 30,
+      qMin: 0.1,
+      qMax: 0.9,
+      qStep: 0.1
+    };
+
+    const ids = Object.keys(defaults);
+    const el = {};
+    for (const id of ids) el[id] = document.getElementById(id);
+
+    const chart = document.getElementById("chart");
+    const summary = document.getElementById("summary");
+    const tableBody = document.querySelector("#resultsTable tbody");
+
+    function numberValue(id) {
+      const v = Number(el[id].value);
+      return Number.isFinite(v) ? v : defaults[id];
+    }
+
+    function intValue(id) {
+      return Math.max(0, Math.floor(numberValue(id)));
+    }
+
+    function clamp(v, lo, hi) {
+      return Math.min(hi, Math.max(lo, v));
+    }
+
+    function params() {
+      const qMin = clamp(numberValue("qMin"), 0.000001, 0.999999);
+      const qMax = clamp(numberValue("qMax"), 0.000001, 0.6);
+      const qStep = clamp(numberValue("qStep"), 0.000001, 0.5);
+      const d0 = intValue("d0");
+      const maxLead = Math.max(d0 + 1, intValue("maxLead"));
+
+      return {
+        F: Math.max(0, numberValue("F")),
+        R: Math.max(0, numberValue("R")),
+        B: intValue("B"),
+        phi: Math.max(0, numberValue("phi")),
+        costMode: el.costMode.value,
+        honestReward: Math.max(0, numberValue("honestReward")),
+        extraCost: Math.max(0, numberValue("extraCost")),
+        cFixed: Math.max(0, numberValue("cFixed")),
+        d0,
+        maxLead,
+        qMin: Math.min(qMin, qMax),
+        qMax: Math.max(qMin, qMax),
+        qStep
+      };
+    }
+
+    function costForQ(q, p) {
+      if (p.costMode === "fixed") return p.cFixed;
+      return q * p.honestReward + p.extraCost;
+    }
+
+    function pWin(q, d, G) {
+      if (d <= -1) return 1;
+      if (d >= G) return 0;
+
+      const p = 1 - q;
+      if (q <= 0) return 0;
+      if (p <= 0) return 1;
+
+      if (Math.abs(q - p) < 1e-12) {
+        return (G - d) / (G + 1);
+      }
+
+      const rho = q / p;
+
+      // For q > p, use an algebraically equivalent form that avoids overflow
+      // when rho^(G+1) is very large.
+      if (rho > 1) {
+        const invBoundary = Math.pow(rho, -(G + 1));
+        const invGap = Math.pow(rho, d - G);
+        return (1 - invGap) / (1 - invBoundary);
+      }
+
+      const a = Math.pow(rho, d + 1);
+      const b = Math.pow(rho, G + 1);
+      return (a - b) / (1 - b);
+    }
+
+    function expectedEvents(q, d, G) {
+      if (d <= -1 || d >= G) return 0;
+
+      const p = 1 - q;
+      if (q <= 0) return G - d;
+      if (p <= 0) return d + 1;
+
+      if (Math.abs(q - p) < 1e-12) {
+        return (d + 1) * (G - d);
+      }
+
+      const rho = q / p;
+      let ratio;
+
+      // ratio = (1 - rho^(d+1)) / (1 - rho^(G+1)).
+      // This transformed form avoids Infinity / Infinity when q > p.
+      if (rho > 1) {
+        const invBoundary = Math.pow(rho, -(G + 1));
+        ratio = (Math.pow(rho, d - G) - invBoundary) / (1 - invBoundary);
+      } else {
+        ratio = (1 - Math.pow(rho, d + 1)) / (1 - Math.pow(rho, G + 1));
+      }
+
+      const numerator = (G + 1) * ratio - (d + 1);
+      return numerator / (p - q);
+    }
+
+    function solveTridiagonal(lower, diag, upper, rhs) {
+      const n = diag.length;
+      if (n === 0) return [];
+      const cPrime = new Array(n).fill(0);
+      const dPrime = new Array(n).fill(0);
+      const x = new Array(n).fill(0);
+
+      let denom = diag[0];
+      if (Math.abs(denom) < 1e-15) denom = denom < 0 ? -1e-15 : 1e-15;
+      cPrime[0] = n > 1 ? upper[0] / denom : 0;
+      dPrime[0] = rhs[0] / denom;
+
+      for (let i = 1; i < n; i++) {
+        denom = diag[i] - lower[i] * cPrime[i - 1];
+        if (Math.abs(denom) < 1e-15) denom = denom < 0 ? -1e-15 : 1e-15;
+        cPrime[i] = i < n - 1 ? upper[i] / denom : 0;
+        dPrime[i] = (rhs[i] - lower[i] * dPrime[i - 1]) / denom;
+      }
+
+      x[n - 1] = dPrime[n - 1];
+      for (let i = n - 2; i >= 0; i--) {
+        x[i] = dPrime[i] - cPrime[i] * x[i + 1];
+      }
+      return x;
+    }
+
+    function weightedPrivateBlocksOnSuccess(q, G, P) {
+      const p = 1 - q;
+      const n = G; // unknowns M[0] through M[G-1]
+      const lower = new Array(n).fill(-q);
+      const diag = new Array(n).fill(1);
+      const upper = new Array(n).fill(-p);
+      const rhs = new Array(n).fill(0);
+
+      for (let d = 0; d < n; d++) {
+        if (d === 0) lower[d] = 0;      // M[-1] = 0
+        if (d === n - 1) upper[d] = 0;  // M[G] = 0
+        const prevP = d === 0 ? 1 : P[d - 1];
+        rhs[d] = q * prevP;
+      }
+
+      return solveTridiagonal(lower, diag, upper, rhs);
+    }
+
+    function boundaryStats(q, G) {
+      const P = [];
+      const T = [];
+      for (let d = 0; d < G; d++) {
+        P[d] = pWin(q, d, G);
+        T[d] = expectedEvents(q, d, G);
+      }
+      const M = weightedPrivateBlocksOnSuccess(q, G, P);
+      return { P, T, M };
+    }
+
+    function evAtBoundary(q, d, G, p, c) {
+      if (d >= G) {
+        return { ev: 0, P: 0, T: 0, M: 0, G };
+      }
+
+      const stats = boundaryStats(q, G);
+      const P = stats.P[d];
+      const T = stats.T[d];
+      const M = stats.M[d];
+      const basePrize = p.F + p.B * p.R - p.phi;
+      const ev = P * basePrize + p.R * M - c * T;
+
+      return { ev, P, T, M, G };
+    }
+
+    function bestContinuationAtLead(q, d, p, c) {
+      let best = { ev: -Infinity, P: 0, T: 0, M: 0, G: null };
+
+      for (let G = d + 1; G <= p.maxLead; G++) {
+        const candidate = evAtBoundary(q, d, G, p, c);
+        if (candidate.ev > best.ev) best = candidate;
+      }
+
+      return best;
+    }
+
+    function qGrid(p) {
+      const values = [];
+      const steps = Math.ceil((p.qMax - p.qMin) / p.qStep);
+      for (let i = 0; i <= steps; i++) {
+        const q = p.qMin + i * p.qStep;
+        if (q <= p.qMax + 1e-10) values.push(Math.round(q * 1e6) / 1e6);
+      }
+      if (values.length === 0 || values[values.length - 1] < p.qMax - 1e-10) {
+        values.push(Math.round(p.qMax * 1e6) / 1e6);
+      }
+      return values;
+    }
+
+    function runModel(p) {
+      return qGrid(p).map(q => {
+        const c = costForQ(q, p);
+        const startBest = bestContinuationAtLead(q, p.d0, p, c);
+
+        let dMaxPositive = null;
+        let bestAtDMax = null;
+
+        if (startBest.ev > 0) {
+          for (let d = p.d0; d < p.maxLead; d++) {
+            const best = bestContinuationAtLead(q, d, p, c);
+            if (best.ev > 0) {
+              dMaxPositive = d;
+              bestAtDMax = best;
+            }
+          }
+        }
+
+        const attack = startBest.ev > 0;
+        const capped = attack && dMaxPositive === p.maxLead - 1;
+        const giveUpLead = attack ? dMaxPositive + 1 : p.d0;
+        const y = attack ? Math.max(0, giveUpLead - p.d0) : 0;
+
+        return {
+          q,
+          pHonest: 1 - q,
+          c,
+          attack,
+          startEV: startBest.ev,
+          startBestG: startBest.G,
+          startP: startBest.P,
+          startT: startBest.T,
+          dMaxPositive,
+          giveUpLead,
+          y,
+          capped,
+          bestAtDMax
+        };
+      });
+    }
+
+    function fmt(x, digits = 4) {
+      if (x === null || x === undefined || !Number.isFinite(x)) return "—";
+      if (Math.abs(x) >= 1000) return x.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      return x.toLocaleString(undefined, { maximumFractionDigits: digits });
+    }
+
+    function fmtQ(x) {
+      return Number(x).toFixed(2).replace(/0$/, "").replace(/\.0$/, ".0");
+    }
+
+    function drawChart(results, p) {
+      const rect = chart.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(620, rect.width);
+      const height = rect.height || 430;
+      chart.width = Math.floor(width * dpr);
+      chart.height = Math.floor(height * dpr);
+      chart.axisY.interval = 1;
+
+      const ctx = chart.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const m = { left: 68, right: 28, top: 28, bottom: 70 };
+      const plotW = width - m.left - m.right;
+      const plotH = height - m.top - m.bottom;
+      const maxYData = Math.max(0, ...results.map(r => r.y));
+      const yMax = Math.max(1, Math.ceil(maxYData));
+      const xMin = results[0]?.q ?? p.qMin;
+      const xMax = results[results.length - 1]?.q ?? p.qMax;
+
+      function xScale(q) {
+        if (Math.abs(xMax - xMin) < 1e-12) return m.left + plotW / 2;
+        return m.left + ((q - xMin) / (xMax - xMin)) * plotW;
+      }
+
+      function yScale(y) {
+        return m.top + plotH - (y / yMax) * plotH;
+      }
+
+      ctx.fillStyle = "#0b1220";
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.strokeStyle = "#334155";
+      ctx.lineWidth = 1;
+      ctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillStyle = "#9ca3af";
+
+      const yTicks = Math.min(8, yMax);
+      for (let i = 0; i <= yTicks; i++) {
+        const yVal = (yMax / yTicks) * i;
+        const y = yScale(yVal);
+        ctx.beginPath();
+        ctx.moveTo(m.left, y);
+        ctx.lineTo(width - m.right, y);
+        ctx.stroke();
+
+        ctx.fillText(String(Math.round(yVal * 100) / 100), 12, y + 4);
+      }
+
+      results.forEach(r => {
+        const x = xScale(r.q);
+        ctx.beginPath();
+        ctx.moveTo(x, m.top);
+        ctx.lineTo(x, height - m.bottom);
+        ctx.stroke();
+
+        ctx.save();
+        ctx.translate(x, height - m.bottom + 20);
+        ctx.rotate(-Math.PI / 5);
+        ctx.fillText(fmtQ(r.q), -10, 0);
+        ctx.restore();
+      });
+
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(m.left, m.top);
+      ctx.lineTo(m.left, height - m.bottom);
+      ctx.lineTo(width - m.right, height - m.bottom);
+      ctx.stroke();
+
+      if (results.length > 0) {
+        ctx.strokeStyle = "#60a5fa";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        results.forEach((r, i) => {
+          const x = xScale(r.q);
+          const y = yScale(r.y);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        results.forEach(r => {
+          const x = xScale(r.q);
+          const y = yScale(r.y);
+          ctx.beginPath();
+          ctx.arc(x, y, r.capped ? 6 : 5, 0, Math.PI * 2);
+          ctx.fillStyle = r.attack ? (r.capped ? "#fbbf24" : "#93c5fd") : "#64748b";
+          ctx.fill();
+          ctx.strokeStyle = "#0b1220";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        });
+      }
+
+      ctx.fillStyle = "#e5e7eb";
+      ctx.font = "700 13px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Miner hashrate share q", m.left + plotW / 2, height - 20);
+
+      ctx.save();
+      ctx.translate(20, m.top + plotH / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText("Additional net public blocks tolerated", 0, 0);
+      ctx.restore();
+
+      ctx.textAlign = "left";
+      ctx.font = "12px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillStyle = "#9ca3af";
+      ctx.fillText("Conservative success condition: private fork reaches d = -1", m.left, 18);
+    }
+
+    function renderTable(results, p) {
+      tableBody.innerHTML = results.map(r => {
+        const attack = r.attack ? '<span class="pill yes">yes</span>' : '<span class="pill no">no</span>';
+        const giveUp = r.attack
+          ? (r.capped ? `≥ ${p.maxLead} <span class="warning">(cap)</span>` : String(r.giveUpLead))
+          : "do not start";
+
+        return `
+          <tr class="${r.attack ? "" : "no-attack"}">
+            <td>${fmtQ(r.q)}</td>
+            <td>${fmt(r.pHonest, 4)}</td>
+            <td>${fmt(r.c, 6)}</td>
+            <td>${attack}</td>
+            <td>${fmt(r.startEV, 6)}</td>
+            <td>${r.startBestG ?? "—"}</td>
+            <td>${fmt(r.startP, 6)}</td>
+            <td>${fmt(r.startT, 4)}</td>
+            <td>${giveUp}</td>
+            <td>${r.capped ? "≥ " : ""}${fmt(r.y, 0)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function renderSummary(results, p) {
+      const attackers = results.filter(r => r.attack);
+      const capped = results.filter(r => r.capped);
+      const maxPoint = results.reduce((best, r) => r.y > best.y ? r : best, results[0] || { y: 0, q: 0 });
+
+      if (attackers.length === 0) {
+        summary.innerHTML = `
+          Under these inputs, no scanned q value has positive start EV at d₀ = ${p.d0}.
+          Try raising F, lowering Φ/c, or increasing the max public lead scan if you are testing extreme assumptions.
+        `;
+        return;
+      }
+
+      summary.innerHTML = `
+        Positive start EV appears for <strong>${attackers.length}</strong> of <strong>${results.length}</strong> scanned q values.
+        The largest plotted continuation threshold is at q = <strong>${fmtQ(maxPoint.q)}</strong>, with
+        <strong>${maxPoint.capped ? "at least " : ""}${fmt(maxPoint.y, 0)}</strong> additional net public blocks tolerated.
+        ${capped.length ? `<span class="warning">${capped.length} point(s) hit the configured max public lead cap; increase the cap for those cases.</span>` : ""}
+      `;
+    }
+
+    function update() {
+      const p = params();
+      if (p.maxLead !== intValue("maxLead")) el.maxLead.value = p.maxLead;
+
+      const results = runModel(p);
+      drawChart(results, p);
+      renderTable(results, p);
+      renderSummary(results, p);
+    }
+
+    function reset() {
+      for (const [id, value] of Object.entries(defaults)) {
+        if (el[id]) el[id].value = value;
+      }
+      update();
+    }
+
+    document.getElementById("recalculateBtn").addEventListener("click", update);
+    document.getElementById("resetBtn").addEventListener("click", reset);
+    document.getElementById("paramsForm").addEventListener("input", () => {
+      window.clearTimeout(window.__reorgTimer);
+      window.__reorgTimer = window.setTimeout(update, 120);
+    });
+    window.addEventListener("resize", () => {
+      window.clearTimeout(window.__resizeTimer);
+      window.__resizeTimer = window.setTimeout(update, 120);
+    });
+
+    update();
+  </script>
+</body>
+</html>
